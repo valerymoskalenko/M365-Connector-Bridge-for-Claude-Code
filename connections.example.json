@@ -1,0 +1,12 @@
+{
+  "account": "user@target-tenant.example",
+  "homeTenantId": "<home tenant id>",
+  "subscriptionId": "<subscription id>",
+  "resourceGroup": "<resource group>",
+  "location": "westeurope",
+  "mail": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-office365",
+  "teams": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-teams",
+  "users": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-office365users",
+  "sharepoint": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-sharepointonline",
+  "onedrive": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-onedriveforbusiness"
+}

@@ -1,0 +1,13 @@
+# caches, temp, logs, build output
+bin/
+obj/
+*.log
+temp/
+out/
+.vs/
+*.user
+# local test downloads (mail/chat content must never be committed)
+downloads/
+# personal context and connection ids (never commit)
+CLAUDE.local.md
+connections.json
