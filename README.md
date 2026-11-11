@@ -4,6 +4,23 @@ Microsoft 365 mail, calendar, Teams chats, people and files in Claude Code when 
 
 Read (and, after approval, write) as the **target account** from local Claude Code.
 
+## Install the skills (Claude Code plugin)
+
+```text
+/plugin marketplace add valerymoskalenko/M365-Connector-Bridge-for-Claude-Code
+/plugin install m365-bridge@m365-connector-bridge
+```
+
+On Claude Code 2.1.275 or later, one step: `/plugin install m365-bridge --marketplace valerymoskalenko/M365-Connector-Bridge-for-Claude-Code`.
+
+| Skill | For |
+|---|---|
+| `m365-bridge` | setup (create and authorize the connections, `connections.json`), how it works, path rules, errors, safety rules |
+| `m365-mail` | inbox, search, threads, Sent Items, attachments, calendar, drafts; sending only after your OK |
+| `m365-teams` | chats, a chat with a person, pasted images, meeting check; posting only after your OK |
+
+Then ask Claude "set up the M365 bridge" and follow the `m365-bridge` setup. Keep your config in `~/.m365-bridge/connections.json` so plugin updates don't remove it. Auto-update is off for third-party marketplaces: turn it on in `/plugin` → Marketplaces, or run `claude plugin update m365-bridge@m365-connector-bridge`.
+
 ## Terms
 
 - **Target account / target tenant** - the Microsoft 365 account and tenant you want to work with, where the claude.ai connector is not available (no admin consent for mail/chat apps, device-code sign-in blocked, or the connector app not allowed).
@@ -26,7 +43,7 @@ local az login (home tenant account)
 
 ## Configuration
 
-Copy `connections.example.json` to `connections.json` (git-ignored) and fill in the subscription, resource group and connection ids. The scripts read it from the folder above `scripts\`.
+Copy `connections.example.json` to `~/.m365-bridge/connections.json` and fill in the subscription, resource group and connection ids. The scripts look for it in this order: `$env:M365_BRIDGE_CONFIG`, `~/.m365-bridge/connections.json`, the repo root (`connections.json` there is git-ignored).
 
 ## Connections
 
@@ -51,7 +68,7 @@ Check: `az resource show --ids <connection id> --query "{status:properties.overa
 
 ## Script
 
-`scripts\Invoke-M365Graph.ps1` - Graph through the Outlook or Teams connection. If your skills use their own copy of the script, keep both in sync until the MCP server replaces it.
+`scripts\Invoke-M365Graph.ps1` - Graph through the Outlook or Teams connection. The skills call it from the plugin folder. If your own skills use a copy of the script, keep both in sync.
 
 ```powershell
 .\scripts\Invoke-M365Graph.ps1 'v1.0/me/mailFolders/inbox/messages?$top=10&$select=subject,from,receivedDateTime'

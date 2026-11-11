@@ -16,9 +16,10 @@ Route: Azure **API connections** (Logic Apps managed connectors) authorized by t
 ## State
 
 - All 5 connector types authorized and tested (read). Writes tested: drafts, send mail, OneDrive create/delete, Teams new chat + post (a new chat gives 405 for ~4 min, retry). Results: `docs/findings.md`, `docs/m365-connector-comparison.md`.
-- Script: `scripts\Invoke-M365Graph.ps1`.
+- Script: `scripts\Invoke-M365Graph.ps1`. Config lookup: `$env:M365_BRIDGE_CONFIG`, `~/.m365-bridge/connections.json`, repo root.
+- The repo is a Claude Code plugin + marketplace (`.claude-plugin/`): skills `m365-bridge`, `m365-mail`, `m365-teams` in `skills/`, referencing files as `${CLAUDE_PLUGIN_ROOT}/...`. Validate with `claude plugin validate .` before a push.
 - MCP server: not started.
-- Known gaps in `Invoke-M365Graph.ps1`: only the Outlook + Teams connections; sets `ContentType` only when there is a body, so `me/messages/{id}/send` fails (needs the header). Add the Users / SharePoint / OneDrive connections and the 405 retry for new Teams chats when building the MCP server.
+- Known gaps in `Invoke-M365Graph.ps1`: only the Outlook + Teams connections. Add the Users / SharePoint / OneDrive connections and the 405 retry for new Teams chats when building the MCP server.
 
 ## Rules
 

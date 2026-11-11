@@ -8,7 +8,8 @@
   local az login (home tenant account) -> ARM POST <connection>/dynamicInvoke -> the connector's
   "Send an HTTP request" operation -> Graph, signed in as the target account.
 
-  Needs connections.json in the folder above scripts\ (see connections.example.json).
+  Needs connections.json (see connections.example.json): $env:M365_BRIDGE_CONFIG, else
+  ~/.m365-bridge/connections.json, else the folder above scripts\.
 
   READ-ONLY by default. Anything but GET needs -AllowWrite, and Claude may pass it only after
   the account owner approved that exact action in the chat (drafts, Teams messages).
@@ -48,9 +49,10 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
-# ---------------------------------------------------------------- config (connections.json in the folder above scripts\)
-$cfgFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'connections.json'
-if (-not (Test-Path $cfgFile)) { throw "No $cfgFile. Copy connections.example.json to connections.json and fill in the connection ids." }
+# ---------------------------------------------------------------- config: $env:M365_BRIDGE_CONFIG, then ~/.m365-bridge/connections.json, then the folder above scripts\
+$cfgFile = @($env:M365_BRIDGE_CONFIG, (Join-Path $HOME '.m365-bridge/connections.json'), (Join-Path (Split-Path $PSScriptRoot -Parent) 'connections.json')) |
+    Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $cfgFile) { throw "No connections.json. Copy connections.example.json to $(Join-Path $HOME '.m365-bridge/connections.json') (or set M365_BRIDGE_CONFIG) and fill in the connection ids." }
 $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json
 $sub = $cfg.subscriptionId
 $conn = @{ mail = $cfg.mail; teams = $cfg.teams }
@@ -93,7 +95,8 @@ function Invoke-Connector([string]$p, [string]$m, [object]$b) {
     $headers = [ordered]@{ Uri = (ConvertTo-ConnectorUrl $p); Method = $m }
     if ($which -eq 'mail' -and -not $Html) { $headers.CustomHeader1 = 'Prefer: outlook.body-content-type="text"' }
     $req = [ordered]@{ method = 'POST'; path = $opPath[$which]; headers = $headers }
-    if ($null -ne $b) { $headers.ContentType = 'application/json'; $req.body = $b }
+    if ($m -ne 'GET') { $headers.ContentType = 'application/json' }   # also with no body, e.g. me/messages/{id}/send (else 400 "Empty Content-Type")
+    if ($null -ne $b) { $req.body = $b }
     $json = @{ request = $req } | ConvertTo-Json -Depth 30 -Compress
     for ($i = 1; ; $i++) {
         $r = Invoke-RestMethod -Method POST -Uri "https://management.azure.com$($conn[$which])/dynamicInvoke?api-version=2016-06-01" `

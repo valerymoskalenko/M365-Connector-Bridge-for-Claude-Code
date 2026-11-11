@@ -1,0 +1,12 @@
+{
+  "name": "m365-connector-bridge",
+  "description": "M365 Connector Bridge: Microsoft 365 skills for Claude Code through Azure API connections.",
+  "owner": { "name": "M365 Connector Bridge" },
+  "plugins": [
+    {
+      "name": "m365-bridge",
+      "source": "./",
+      "description": "Mail, calendar and Teams chats of a Microsoft 365 account where the claude.ai Microsoft 365 connector is not available."
+    }
+  ]
+}

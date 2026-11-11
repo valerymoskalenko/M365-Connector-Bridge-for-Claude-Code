@@ -2,7 +2,8 @@
 .SYNOPSIS
   Creates an Azure API connection (Microsoft.Web/connections) for a managed connector and prints the
   portal link where the account owner authorizes it with the target account.
-  Defaults come from connections.json (folder above scripts\), if it exists.
+  Defaults come from connections.json, if it exists ($env:M365_BRIDGE_CONFIG, ~/.m365-bridge/connections.json,
+  or the folder above scripts\).
 .EXAMPLE
   .\New-M365Connection.ps1 -Api office365users
   .\New-M365Connection.ps1 -Api teams -ResourceGroup rg-m365-bridge
@@ -16,13 +17,14 @@ param(
     [string]$HomeTenantId
 )
 $ErrorActionPreference = 'Stop'
-$cfgFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'connections.json'
-$cfg = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw | ConvertFrom-Json } else { $null }
+$cfgFile = @($env:M365_BRIDGE_CONFIG, (Join-Path $HOME '.m365-bridge/connections.json'), (Join-Path (Split-Path $PSScriptRoot -Parent) 'connections.json')) |
+    Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+$cfg = if ($cfgFile) { Get-Content $cfgFile -Raw | ConvertFrom-Json } else { $null }
 if (-not $ResourceGroup) { $ResourceGroup = $cfg.resourceGroup }
 if (-not $SubscriptionId) { $SubscriptionId = $cfg.subscriptionId }
 if (-not $Location) { $Location = if ($cfg.location) { $cfg.location } else { 'westeurope' } }
 if (-not $HomeTenantId) { $HomeTenantId = $cfg.homeTenantId }
-if (-not $ResourceGroup -or -not $SubscriptionId) { throw "Pass -ResourceGroup and -SubscriptionId, or set them in $cfgFile." }
+if (-not $ResourceGroup -or -not $SubscriptionId) { throw "Pass -ResourceGroup and -SubscriptionId, or set them in connections.json." }
 
 $displayName = if ($cfg.account) { "M365 Connector Bridge $Api ($($cfg.account))" } else { "M365 Connector Bridge $Api" }
 $props = @{
