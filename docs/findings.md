@@ -46,6 +46,42 @@ All three connections authorized by the account owner; status Connected as the t
 
 Scopes in the Office 365 Users connection token (from a 403 message): `Application.ReadWrite.All, Calendars.ReadWrite, Calendars.ReadWrite.Shared, Contacts.ReadWrite, DelegatedPermissionGrant.ReadWrite.All, Edu*, Files.ReadWrite.All, Group.ReadWrite.All, IdentityUserFlow.ReadWrite.All, Mail.ReadWrite, Mail.ReadWrite.Shared, Mail.Send, Mail.Send.Shared, MailboxSettings.ReadWrite, People.Read(.All), Sites.Read.All, Tasks.ReadWrite, User.Read(.All), User.ReadWrite`. These are delegated: the real limit is what the target account may do. Still, anyone with Contributor on this connection can act as the target account with these scopes - keep access to the resource group tight.
 
+### Third round: daily use (9-17 Nov 2026)
+
+| Test | Result |
+|---|---|
+| Draft with an inline screenshot (190 KB PNG) and To + Cc in one POST `me/messages` | ✅ response shows `hasAttachments: false` (normal for inline) |
+| Draft with a file attachment over ~2.9 MB in the POST (3.2 MB .xlsx) | ❌ `RequestContentTooLarge` - the connector request limit is 4 MB, base64 makes the file ~1.37 times larger |
+| Same file: `POST me/messages/{id}/attachments/createUploadSession` through the Outlook connector, then PUT the bytes straight to `uploadUrl` (no auth header, `Content-Range`, 3 MB parts) | ✅ 200, then 201 |
+| PATCH a draft with an empty Cc list sent as `null` | ❌ HTTP 400 RequestBodyRead - send `[]` |
+| Reply draft: read the body without `-Html`, add HTML, PATCH | ❌ the connector returns plain text with no `<body>` tag; PATCHing it back flattens the quoted thread into one paragraph. Read with `-Html` |
+| Signature: take `<div id="Signature">` from the newest sent message and add it to Graph drafts | ✅ - a quoted reply can contain another person's signature block; check the sender's name |
+| Draft edit link `outlook.cloud.microsoft/mail/deeplink/compose/<id>?ItemID=<id>&exvsurl=1` | ✅ only with `=` written as `%3D` in the path (a plain `=` opens read-only). Without `/mail/<account>/` and `login_hint` a browser tab signed in with another account shows "This message might have been moved or deleted" |
+| Outlook on the web autosave of an opened draft | rewrites the HTML (`class="elementToProof"`, headings as `<b>` in `<p>`, inline styles reordered); a later PATCH that relies on your own HTML no longer matches |
+| Outlook connector: `shares/u!...`, `drives/...` (file links in a mail or chat) | ❌ 400 "Allowed values: me,users ... messages,mailFolders,events" |
+| `$search` for a mail received 1 minute earlier | ❌ not found yet - list the inbox with `$filter=receivedDateTime ge ...` instead |
+| Teams: `POST v1.0/chats` / `POST v1.0/me/chats` through "Send an HTTP request" (new chat with an external person) | ❌ 400 "Allowed values: teams,me,users" / 405. For a person inside the target tenant use the connector operation `POST /beta/chats`. A federated chat with a person of another organization can't be created through the bridge (see below): the user starts it in Teams |
+| Teams: a 1:1 chat with a person of another organization | ✅ listed once it exists (only the chat between the owner's own two accounts was missing) |
+| Teams: system messages of a recorded 1:1 call (`callRecordingEventMessageDetail`, `callTranscriptEventMessageDetail`) | ✅ readable with `-Html`; the recording / transcript files are not |
+| `scripts/Save-M365Draft.ps1` end to end (17 Nov, drafts to self, then deleted): new draft with inline image + signature + 3.5 MB file | ✅ the file went through the upload session (3,670,177 bytes) |
+| Same: update of the same draft (new body, other image, `-Cc @()`) | ✅ same id; old inline image removed, new one added, Cc empty |
+| Same: reply-all draft (`-To` overridden), then body update | ✅ own text and signature above the quote; after the update the old text is gone and the quoted thread is unchanged (same length) |
+| Plain-text body of a draft with an inline image | the image appears as `[cid:<name>]` (`Compare-DraftText.py` ignores it) |
+| Activity log of a connection: `az monitor activity-log list --resource-id <connection id>` | ✅ every `Microsoft.Web/connections/dynamicInvoke/action` call is listed (Started + Succeeded) with the caller; a managed identity shows as its object id. Default limit 50 events: use `--max-events` |
+| Access policies on the connections (`<connection id>/accessPolicies`) | ❌ 400 `InvalidApiConnectionAccessPolicy`: "Only 'V2' connections support access policies" (connections made by `New-M365Connection.ps1` are V1) |
+| Connector `GatewayTimeout ... 'Microsoft.Web'` on a chat POST | happened; the message may or may not have been posted - read the chat before running it again. `Invoke-M365Graph.ps1` repeats HTTP 5xx only for reads (429 for every method) |
+| Inline images of a mail: attachment name against the `cid:` in the body (12 inbox mails with images) | 31 of 63 inline attachments have a name that is not in the body (pasted images: name `image.png`, content id a GUID). Match on `contentId`, not on the name |
+| `attachments?$select=id,name,isInline,microsoft.graph.fileAttachment/contentId` through the Outlook connector | ✅ gives the content id without downloading the file |
+| `$expand=singleValueExtendedProperties($filter=id eq 'String 0x1042')` on a message ("in reply to") | ✅ set on a draft made by `createReply` / `createReplyAll`, not set on a new draft. `Save-M365Draft.ps1` uses it to know that a draft has a quoted thread |
+| Body of a mail that is itself a reply written in Outlook on the web | holds its own `<div id="appendonsend">` (7 of 50 inbox mails). In a reply draft made by Graph this marker is inside the quote, after the `divRplyFwdMsg` header: the quote starts at whichever marker comes first |
+| `Save-M365Draft.ps1` reply-all draft to a mail with 10 pasted images and an older `appendonsend`, then an update with a new text and another own image (17 Nov, To = self, deleted after) | ✅ all 10 images of the thread kept, 0 broken `cid:` references, no duplicate attachments, own text and own image replaced, one signature |
+| Quoted thread before and after a PATCH of the draft body | same length; only the counters in `data-outlook-trace="F:n\|T:n"` of each `<img>` go up by one (Exchange does that on every save) |
+| A file attachment of 0 bytes | ✅ accepted |
+| `Send-M365ChatMessage.ps1` on the note-to-self chat `48:notes` (17 Nov) | ✅ check, post and read-back work (4 seconds). A second run of the same command stops (STOP, exit code 2, the own message is the new one): the text is in the chat exactly once |
+| `Send-M365ChatMessage.ps1 -NewChat` (405 on a new chat) | tested only offline, with a simulated 405: tries again until the post succeeds; without the switch a 405 is not repeated. Chats started in Teams 1.5 and 2.5 minutes earlier gave no 405 |
+| Teams connector `POST /beta/chats` for a person of another organization | ❌ the **federated chat** (with the person's real account in their own tenant) can't be created: the address and the object id from their tenant both give 400 `'user@odata.bind' field is missing in the request`. Graph itself can create it ([Create chat](https://learn.microsoft.com/graph/api/chat-post), example 7), but the connector refuses a raw `POST /chats` (row above). With the object id of the person's **guest object in the target tenant** the operation gives 201 - but that is a different chat, see the next row |
+| 1:1 chats between the target account and one person of another organization, when each account is also a guest in the other tenant (17 Nov, the owner's two accounts): **three different chats** | (1) **Federated chat**, both real accounts: the members have different tenant ids, the id is `19:<target id>_<other id>@unq.gbl.spaces` and is the same in both tenants. 404 until the person sent the first message in Teams; then listed at once, readable, and `Send-M365ChatMessage.ps1` posted there (6 seconds; the message was read back from the other tenant, a second run stopped). (2) **Chat with the person's guest object in the target tenant**: member address = the external address, member tenant = the target tenant. The bridge can create it and post there, but the person sees it only after switching Teams to the target organization: a test post there went unseen. (3) **Chat with the target account's guest object in the other tenant**: lives in the other tenant, the bridge gets 403 |
+
 ## Connector path rules
 
 The connectors validate the Graph URL before calling Graph. Error text: `URI path is not a valid Graph endpoint, path is neither absolute nor relative or resource/object is not supported for this connector. Invalid resource,Allowed values: ... Invalid Object,Allowed values: ...`
@@ -65,7 +101,7 @@ Also:
 
 ## Limits
 
-- Graph in the target tenant does **not list 1:1 chats with external (federated) accounts** (a 1:1 chat between the owner's home account and the target account was invisible). Group and meeting chats with external members are listed.
+- **A person of another organization can have up to three 1:1 chats with the target account** (federated, guest object in the target tenant, guest object in the other tenant: see the test table). Post to the federated one: the chat whose external member has **another tenant id**. The bridge can't create that chat: the user or the other person sends the first message in Teams. Group and meeting chats with external members are listed.
 - No Microsoft Search API (`search/query`) through any connector → no `chat_message_search` equivalent; scan recent chats instead. Files are covered by SharePoint REST search.
 - Meeting transcripts: Graph access is disabled for the whole target tenant (`GraphAccessToTranscriptsDisabled`), so no route can read them.
 - Power Automate is not an option for a push design: Azure Blob Storage connector is **Premium**; a standard Microsoft 365 Power Automate licence has standard connectors only.

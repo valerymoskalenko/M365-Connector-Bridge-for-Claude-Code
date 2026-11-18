@@ -99,11 +99,20 @@ function Invoke-Connector([string]$p, [string]$m, [object]$b) {
     if ($null -ne $b) { $req.body = $b }
     $json = @{ request = $req } | ConvertTo-Json -Depth 30 -Compress
     for ($i = 1; ; $i++) {
-        $r = Invoke-RestMethod -Method POST -Uri "https://management.azure.com$($conn[$which])/dynamicInvoke?api-version=2016-06-01" `
-            -Headers @{ Authorization = "Bearer $(Get-ArmToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json))
+        try {
+            $r = Invoke-RestMethod -Method POST -Uri "https://management.azure.com$($conn[$which])/dynamicInvoke?api-version=2016-06-01" `
+                -Headers @{ Authorization = "Bearer $(Get-ArmToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json))
+        }
+        catch {
+            # network failure with no HTTP response (e.g. "A socket operation was attempted to an unreachable network"):
+            # retry reads only - a write may already have been done
+            if ($m -eq 'GET' -and -not $_.Exception.Response -and $i -lt 4) { Start-Sleep -Seconds (5 * $i); continue }
+            throw
+        }
         $code = "$($r.response.statusCode)"
         $num = 0; if (-not [int]::TryParse($code, [ref]$num)) { try { $num = [int][Net.HttpStatusCode]$code } catch { $num = 0 } }
-        if (($num -eq 429 -or $num -ge 500) -and $i -lt 4) { Start-Sleep -Seconds (5 * $i); continue }
+        # 429 = not done, safe to repeat for every method. 5xx: repeat reads only - a write may already have been done
+        if (($num -eq 429 -or ($num -ge 500 -and $m -eq 'GET')) -and $i -lt 4) { Start-Sleep -Seconds (5 * $i); continue }
         if ($num -lt 200 -or $num -gt 299) {
             $msg = ($r.response.body | ConvertTo-Json -Depth 5 -Compress)
             if ($msg.Length -gt 600) { $msg = $msg.Substring(0, 600) + '...' }

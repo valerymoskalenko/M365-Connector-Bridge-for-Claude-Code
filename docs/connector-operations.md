@@ -29,7 +29,7 @@ Tested through `/codeless/httprequest` (7 Nov 2026): draft POST `me/messages`, P
 | Get message details | POST `/beta/teams/messages/{messageId}/messageType/groupchat` body `{ "recipient": "<chatId>" }` |
 | Post message in a chat or channel | POST `/beta/teams/conversation/message/poster/User/location/Group%20chat` body `{ "recipient": "<chatId>", "messageBody": "<html>" }` |
 | Post a message to myself | POST `/v1.0/chats/48:notes/messages` |
-| Create a chat | POST `/beta/chats` body `{ "members": "<email>[;<email>]" }` (one email = 1:1 chat; returns `{ "id": ... }`) |
+| Create a chat | POST `/beta/chats` body `{ "members": "<email>[;<email>]" }` (one email = 1:1 chat; returns `{ "id": ... }`, for an existing 1:1 chat the id of that chat). Works for people inside the target tenant; it can't create a federated chat with a person of another organization (400 with the address, see `findings.md`) |
 | Send message (Graph, tested) | POST `/httprequest` with `Uri` = `https://graph.microsoft.com/v1.0/me/chats/{chatId}/messages`, body `{ "body": { "contentType": "html", "content": "..." } }` → 201. A new chat returns 405 for ~3–4 min - retry |
 | Trigger "When a new chat message is added" | webhook, any chat the target account is in; output only conversationId + messageId |
 

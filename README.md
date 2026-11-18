@@ -1,87 +1,100 @@
 # M365 Connector Bridge for Claude Code
 
-Microsoft 365 mail, calendar, Teams chats, people and files in Claude Code when the claude.ai Microsoft 365 connector is not available in your tenant.
+Work with your Microsoft 365 **mail, calendar, Teams chats, people and files** from Claude Code, for an account where the claude.ai Microsoft 365 connector is not available - for example, when the tenant gives no admin consent for mail and chat apps, blocks device-code sign-in, or does not allow the connector app.
 
-Read (and, after approval, write) as the **target account** from local Claude Code.
-
-## Install the skills (Claude Code plugin)
-
-```text
-/plugin marketplace add valerymoskalenko/M365-Connector-Bridge-for-Claude-Code
-/plugin install m365-bridge@m365-connector-bridge
-```
-
-On Claude Code 2.1.275 or later, one step: `/plugin install m365-bridge --marketplace valerymoskalenko/M365-Connector-Bridge-for-Claude-Code`.
-
-| Skill | For |
-|---|---|
-| `m365-bridge` | setup (create and authorize the connections, `connections.json`), how it works, path rules, errors, safety rules |
-| `m365-mail` | inbox, search, threads, Sent Items, attachments, calendar, drafts; sending only after your OK |
-| `m365-teams` | chats, a chat with a person, pasted images, meeting check; posting only after your OK |
-
-Then ask Claude "set up the M365 bridge" and follow the `m365-bridge` setup. Keep your config in `~/.m365-bridge/connections.json` so plugin updates don't remove it. Auto-update is off for third-party marketplaces: turn it on in `/plugin` → Marketplaces, or run `claude plugin update m365-bridge@m365-connector-bridge`.
-
-## Terms
-
-- **Target account / target tenant** - the Microsoft 365 account and tenant you want to work with, where the claude.ai connector is not available (no admin consent for mail/chat apps, device-code sign-in blocked, or the connector app not allowed).
-- **Home tenant** - the tenant of the Azure subscription that holds the connections. Local `az login` uses an account of this tenant.
+It needs no app registration and no admin consent in that tenant. Instead it uses Azure **API connections** (the managed connectors of Logic Apps) that you authorize once with your own account.
 
 ## How it works
 
-```
-local az login (home tenant account)
-  -> POST https://management.azure.com/<connection id>/dynamicInvoke?api-version=2016-06-01
-       body: { "request": { "method": "POST", "path": "<connector operation path>", "headers": {...}, "body": ... } }
-     -> the connector runs the operation with the token stored in the connection
-        -> Microsoft Graph / SharePoint as the target account
-```
+```mermaid
+%%{init: {"theme": "base", "flowchart": {"wrappingWidth": 280, "nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontFamily": "Segoe UI, -apple-system, Helvetica, Arial, sans-serif", "fontSize": "15px", "primaryTextColor": "#1F2937", "lineColor": "#64748B", "edgeLabelBackground": "#FFFFFF"}}}%%
+flowchart LR
+    subgraph PC["💻 1 · Your computer"]
+        CC("<b>Claude Code</b><br/>skills:<br/>m365-mail<br/>m365-teams<br/>m365-bridge")
+        S("<b>PowerShell scripts</b><br/>az login · home tenant")
+        CC --> S
+    end
 
-- A **connection** (`Microsoft.Web/connections`) is a standalone Azure resource that stores the OAuth token. No Logic App is needed; one was used only for the first test (deleted).
-- `dynamicInvoke` is the action the Azure portal uses to fill dropdowns in the Logic Apps designer. It is **not documented for production use** and may change.
-- Generic operations: Outlook `/codeless/httprequest` (Graph), Teams `/httprequest` (Graph), Office 365 Users `/codeless/httprequest` (Graph, almost any `me/...` or `users/...` path), SharePoint `/datasets/{site, URL-encoded twice}/httprequest` (SharePoint REST). Each connector only allows some Graph paths (`docs/findings.md`).
-- Response: `{ "response": { "statusCode": "OK", "headers": {...}, "body": ... } }`. Binary content comes as `{ "$content-type": "...", "$content": "<base64>" }`.
+    subgraph AZ["☁️ 2 · Azure subscription"]
+        subgraph RG["Resource group"]
+            C("<b>Logic Apps API connections</b><br/>Outlook<br/>Teams<br/>Users<br/>SharePoint<br/>OneDrive<br/><i>hold your sign-in token</i>")
+        end
+    end
 
-## Configuration
+    subgraph M365["📬 3 · Microsoft 365"]
+        G("<b>Microsoft Graph</b><br/>mail<br/>calendar<br/>Teams<br/>files<br/><i>target tenant, as your account</i>")
+    end
 
-Copy `connections.example.json` to `~/.m365-bridge/connections.json` and fill in the subscription, resource group and connection ids. The scripts look for it in this order: `$env:M365_BRIDGE_CONFIG`, `~/.m365-bridge/connections.json`, the repo root (`connections.json` there is git-ignored).
+    S == "dynamicInvoke" ==> C
+    C == "Graph request" ==> G
 
-## Connections
-
-Five connections in one resource group of the home subscription.
-
-| Config key | Connector (managed API) | For | Status 7 Nov 2026 |
-|---|---|---|---|
-| `mail` | Office 365 Outlook (`office365`) | mail, attachments, calendar | ✅ authorized, tested |
-| `teams` | Microsoft Teams (`teams`) | chats, messages, pasted images | ✅ authorized, tested |
-| `users` | Office 365 Users (`office365users`) | people search, profiles, manager; **also Graph for OneDrive, shared files, joined teams, free time** | ✅ authorized, tested |
-| `sharepoint` | SharePoint (`sharepointonline`) | site files, SharePoint REST, tenant-wide search | ✅ authorized, tested |
-| `onedrive` | OneDrive for Business (`onedriveforbusiness`) | own files, convert to PDF | ✅ authorized, tested |
-
-**Create:** `scripts\New-M365Connection.ps1 -Api <api>` (defaults from `connections.json`, name `m365bridge-<api>`). It prints the portal link for authorization.
-
-**Authorize (account owner):** Azure portal signed in to the home tenant → connection → **Edit API connection** → **Authorize** → "Use another account" → the target account → MFA → **Save**. URL pattern:
-`https://portal.azure.com/#@<home tenant id>/resource<connection id>/edit`
-
-Check: `az resource show --ids <connection id> --query "{status:properties.overallStatus,user:properties.authenticatedUser.name}"`.
-
-**Move to another resource group:** `scripts\New-M365Connection.ps1 -Api <api> -ResourceGroup <new rg>` for each API, the owner authorizes, then update `connections.json` (and any copy used by your skills). A connection cannot keep its token across a move; it must be authorized again.
-
-## Script
-
-`scripts\Invoke-M365Graph.ps1` - Graph through the Outlook or Teams connection. The skills call it from the plugin folder. If your own skills use a copy of the script, keep both in sync.
-
-```powershell
-.\scripts\Invoke-M365Graph.ps1 'v1.0/me/mailFolders/inbox/messages?$top=10&$select=subject,from,receivedDateTime'
-.\scripts\Invoke-M365Graph.ps1 'v1.0/me/chats?$expand=members,lastMessagePreview&$orderby=lastMessagePreview/createdDateTime desc&$top=20'
-.\scripts\Invoke-M365Graph.ps1 '<hostedContents url>' -OutFile C:\temp\image.png
+    classDef claude fill:#FFFFFF,stroke:#D97757,stroke-width:2px,color:#1F2937
+    classDef azure fill:#FFFFFF,stroke:#0078D4,stroke-width:2px,color:#1F2937
+    classDef m365 fill:#FFFFFF,stroke:#6B4FD8,stroke-width:2px,color:#1F2937
+    class CC,S claude
+    class C azure
+    class G m365
+    style PC fill:#FDF3EE,stroke:#D97757,stroke-width:1px,color:#7A3A1F
+    style AZ fill:#EEF5FC,stroke:#0078D4,stroke-width:1px,color:#0B3D6B
+    style RG fill:#DCEBFA,stroke:#5A9BD8,stroke-width:1px,stroke-dasharray:4 3,color:#0B3D6B
+    style M365 fill:#F3F0FD,stroke:#6B4FD8,stroke-width:1px,color:#3B2A8A
+    linkStyle default stroke:#64748B,stroke-width:2px
 ```
 
-Read-only unless `-AllowWrite` (only after the account owner approved the action). Mail bodies come as text; Teams HTML becomes text with `[image: <url>]` for pasted images.
+1. **Your computer:** you ask Claude Code; a skill runs a small PowerShell script, signed in to Azure with `az login`.
+2. **Azure subscription:** the script calls an API connection through Azure Resource Manager (`dynamicInvoke`). Azure roles decide who may do that.
+3. **Microsoft 365:** the connection calls Microsoft Graph with the token you stored when you authorized it, so Graph sees your account.
 
-## Use responsibly
+Technical details: [docs/how-it-works.md](docs/how-it-works.md).
 
-This route reads your own Microsoft 365 data through an Azure subscription outside the target tenant, so the target tenant's IT does not see or manage it as an app. Use it only with your own account, check your organization's policies first, and keep access to the resource group that holds the connections tight: anyone with Contributor on a connection can act as the target account.
+## What you can ask
 
-## Next step
+- "Check my mail from today. Anything I haven't answered?"
+- "Find the thread with Pat about the invoice and summarize it."
+- "Draft a reply-all: we agree, start on Monday." (stays a draft until you say "send")
+- "What did Sam write me in Teams? Open the screenshot he pasted."
+- "What is in my calendar next week?"
 
-A local MCP server with the same tool names as the claude.ai Microsoft 365 connector: `docs/mcp-server-plan.md`.
+## Install and set up
+
+```text
+claude plugin install m365-bridge --marketplace valerymoskalenko/M365-Connector-Bridge-for-Claude-Code
+```
+
+Then ask Claude **"set up the M365 bridge"**. Setup takes about 15 minutes, once: [docs/setup.md](docs/setup.md).
+
+| Skill | For |
+|---|---|
+| `m365-bridge` | setup, how it works, errors, safety rules |
+| `m365-mail` | inbox, search, threads, Sent Items, attachments, calendar, drafts |
+| `m365-teams` | chats, a chat with a person, pasted images, watching a chat, meeting check |
+
+## Safe by default
+
+- **Read-only.** Nothing is changed without your OK for that exact action.
+- **Drafts, not sends.** "Write an email" or "answer him in Teams" gives you the text or a draft first; it is sent or posted only when you say "send".
+- **Who else can use your connections?** Everyone with Owner, Contributor or Logic App Contributor on them, also inherited from the subscription or management groups. Knowing the URL alone gives no access. Check and reduce it: [docs/security.md](docs/security.md).
+
+Use the bridge only with your own account, and check your organization's policies first.
+
+## Documentation
+
+| Document | What is in it |
+|---|---|
+| [docs/setup.md](docs/setup.md) | install, config file, create and authorize the connections, test, move |
+| [docs/how-it-works.md](docs/how-it-works.md) | `dynamicInvoke`, connector operations, request and response format |
+| [docs/scripts.md](docs/scripts.md) | `Invoke-M365Graph.ps1` and the helper scripts (drafts, signature, chat watcher) |
+| [docs/security.md](docs/security.md) | which Azure roles give access, how to check, reduce and detect it, emergency stop |
+| [docs/findings.md](docs/findings.md) | what was tested, path rules and limits of each connector |
+| [docs/m365-connector-comparison.md](docs/m365-connector-comparison.md) | the claude.ai Microsoft 365 connector compared with this bridge |
+| [docs/connector-operations.md](docs/connector-operations.md) | useful operations of each connector (Outlook, Teams, Users, SharePoint, OneDrive) |
+| [docs/mcp-server-plan.md](docs/mcp-server-plan.md) | an idea: a local MCP server with the connector's tool names (not decided) |
+
+## Terms
+
+- **Target account / target tenant** - the Microsoft 365 account and tenant you want to work with, where the claude.ai connector is not available.
+- **Home tenant** - the tenant of the Azure subscription that holds the connections. `az login` uses an account of this tenant. It can be the **same tenant as the target tenant**, or a **separate tenant**, for example a personal one. A separate tenant where you are the only admin is also the safest choice: see [docs/security.md](docs/security.md).
+
+## License
+
+MIT - see [LICENSE](LICENSE).

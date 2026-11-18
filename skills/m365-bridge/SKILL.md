@@ -28,7 +28,14 @@ Paths are relative to the plugin root, `${CLAUDE_PLUGIN_ROOT}` (a repo clone wor
 |---|---|
 | `scripts/Invoke-M365Graph.ps1` | Graph through the Outlook (`mail`) or Teams (`teams`) connection |
 | `scripts/New-M365Connection.ps1` | create one connection and print its authorize link |
+| `scripts/Save-M365Draft.ps1` | every mail draft: new, reply / reply-all, update in place, signature, inline images, large attachments (skill m365-mail) |
+| `scripts/Get-M365Signature.ps1` | the user's current Outlook signature, taken from Sent Items |
+| `scripts/Get-M365DraftLink.ps1` | the link that opens a draft in edit mode |
+| `scripts/Compare-DraftText.py` | was a draft edited by hand? (draft text vs. the HTML it was made from) |
+| `scripts/Watch-M365Chat.ps1` | watch one Teams chat, one line per new message (skill m365-teams) |
+| `scripts/Send-M365ChatMessage.ps1` | post one Teams chat message: check for new messages, post, read back (skill m365-teams) |
 | `connections.example.json` | template for the config |
+| `docs/security.md` | who can use the connections (Azure roles table), checks, how to reduce access, emergency stop |
 | `docs/findings.md`, `docs/connector-operations.md` | tested paths, limits, other connector operations (Office 365 Users, SharePoint, OneDrive) |
 
 Config: `connections.json`, looked up in this order: `$env:M365_BRIDGE_CONFIG`, `~/.m365-bridge/connections.json`, the plugin root. Keep it in `~/.m365-bridge/` so plugin updates don't remove it. It holds subscription and connection ids: never commit it, never paste it into public places.
@@ -64,6 +71,14 @@ Check a connection: `az resource show --ids <connection id> --query "{status:pro
 
 Output is JSON. Use `-Raw` in PowerShell and print **only what answers the question** (subjects, counts, the one thread asked about), not whole mailboxes.
 
+With `-All` the result is the list of items itself (no `.value`). With `-Raw`, Graph times arrive as `[datetime]` in UTC: compare them in UTC (`.ToUniversalTime()`, `([datetimeoffset]'<text>').UtcDateTime`), never with `[datetime]'<text>Z'`, which becomes local time.
+
+### PowerShell tips
+
+- **Name helper functions Verb-Noun with a dash** (`Add-Para`, `New-Shot`). PowerShell resolves aliases before functions, so a short name such as `H` (Get-History), `R` (Invoke-History), `diff`, `sort` or `select` silently runs the built-in command instead ("Cannot bind parameter 'Id' ..."). Check a name with `Get-Command <name> -ErrorAction SilentlyContinue`: it must return nothing.
+- Call scripts that take arrays (`-Cc @()`, several `-Images`) with `&` from PowerShell. `pwsh -File` and bash can't pass arrays.
+- Python on Windows: `py -I -X utf8 <script>`. A non-ASCII character printed to a cp1252 console crashes the script otherwise.
+
 ## Rules (hard)
 
 - **Read-only by default.** The script refuses anything but GET without `-AllowWrite`. Pass `-AllowWrite` only after the user approved that exact action in the chat.
@@ -86,9 +101,18 @@ Output is JSON. Use `-Raw` in PowerShell and print **only what answers the quest
 | `No Azure token` | `az login` with the home tenant account that can use the subscription |
 | ARM 403 / AuthorizationFailed | the az account has no access to the subscription or the connection |
 | `HTTP 400 ... URI path is not a valid Graph endpoint` | a path the connector does not allow - see the rules above |
+| `A socket operation was attempted to an unreachable network` (or another network error) | local network failure. The script retries reads 3 times; a write is not retried - check whether it was done, then run it again |
+| `GatewayTimeout ... 'Microsoft.Web'` or another HTTP 5xx | the connector or Graph failed. The script retries reads 3 times; a write is never retried, because it may already be done. For a write, first check whether it was done (read the draft / the newest chat messages), only then run it again. HTTP 429 is retried for reads and writes |
+| `RequestContentTooLarge` | the request is over 4 MB (a file attachment over about 2.9 MB in base64). Use an upload session (`Save-M365Draft.ps1` does it) |
 | `HTTP 401` / `InvalidAuthenticationToken` / connection status `Error` | the stored token expired or Conditional Access wants a new sign-in → the user authorizes the connection again (setup step 4) |
 | `ResourceNotFound` on the connection | the connection or its resource group was deleted → setup step 3 |
 
 ## Security
 
-Anyone with Contributor on a connection can act as the target account. Keep the resource group private to the user. Use the bridge only with your own account and check your organization's policies first.
+Anyone who can use a connection acts as the target account (mail, Teams, files) until its refresh token expires or is revoked. Who that is, the read-only checks and the ways to reduce access are in `${CLAUDE_PLUGIN_ROOT}/docs/security.md`: read it before you answer "who can read my mail through the bridge?".
+
+- A URL or resource id alone gives no access. Azure roles decide: Owner, Contributor and the Logic Apps contributor roles, at the connection or at any scope above it.
+- **Never create** a Logic App with a Request (HTTP) trigger on these connections, connection keys (`listConnectionKeys`) or consent links: each one gives access outside Azure roles.
+- **Never change** role assignments, deployment stacks, deny settings, alerts or the connections themselves on your own. Show the commands and wait for the user's OK for that exact change.
+- Emergency stop (only on the user's word): delete the connections, or the user revokes all sessions of the target account.
+- Use the bridge only with your own account and check your organization's policies first.

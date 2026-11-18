@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Plugin icon source. Render to .claude-plugin/icon.png (1024 x 1024, transparent corners).
+       Idea: a two-span bridge that also reads as the letter "m", on a rainbow tile. Original artwork. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="0.34" stop-color="#6A4DF5"/>
+      <stop offset="0.62" stop-color="#D4359F"/>
+      <stop offset="0.84" stop-color="#FF6B3D"/>
+      <stop offset="1" stop-color="#FFB627"/>
+    </linearGradient>
+    <radialGradient id="teal" cx="0.08" cy="0.1" r="0.62">
+      <stop offset="0" stop-color="#25E0D0" stop-opacity="0.95"/>
+      <stop offset="0.55" stop-color="#25E0D0" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#25E0D0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gold" cx="0.96" cy="0.98" r="0.5">
+      <stop offset="0" stop-color="#FFE14D" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFE14D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="deep" cx="0.5" cy="1.05" r="0.75">
+      <stop offset="0" stop-color="#1B0B4A" stop-opacity="0.16"/>
+      <stop offset="0.7" stop-color="#1B0B4A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="reflectMask">
+      <rect x="0" y="716" width="1024" height="210" fill="url(#fade)"/>
+    </mask>
+    <clipPath id="tile"><rect width="1024" height="1024" rx="228" ry="228"/></clipPath>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#1B0B4A" flood-opacity="0.32"/>
+    </filter>
+    <path id="bridge" d="M272 674 V470 A120 120 0 0 1 512 470 V674 M512 470 A120 120 0 0 1 752 470 V674"/>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="1024" height="1024" fill="url(#base)"/>
+    <rect width="1024" height="1024" fill="url(#teal)"/>
+    <rect width="1024" height="1024" fill="url(#gold)"/>
+    <rect width="1024" height="1024" fill="url(#deep)"/>
+    <rect width="1024" height="1024" fill="url(#gloss)"/>
+
+    <!-- reflection in the water -->
+    <g mask="url(#reflectMask)">
+      <use href="#bridge" transform="translate(0 1392) scale(1 -1)" fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- bridge: two spans = the letter m -->
+    <g filter="url(#soft)" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+      <use href="#bridge" stroke-width="64"/>
+      <path d="M196 696 H828" stroke-width="44"/>
+    </g>
+  </g>
+</svg>

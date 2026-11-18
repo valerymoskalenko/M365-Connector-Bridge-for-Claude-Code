@@ -2,7 +2,7 @@
 
 The tool list of the claude.ai Microsoft 365 connector was collected from skills that use it (tools that were really used). It may be incomplete - check the live tool list when the connector is authorized in a session.
 
-Updated 7 Nov 2026 (evening), after all five connections were authorized and tested (`docs/findings.md`).
+Updated 17 Nov 2026. All five connections are authorized and tested (`docs/findings.md`).
 
 | Operation | Microsoft 365 connector | This bridge | Connection | Status |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@ Updated 7 Nov 2026 (evening), after all five connections were authorized and tes
 | Calendar | `outlook_calendar_search` | `me/calendar/calendarView` | Outlook | ✅ |
 | Free time | `outlook_find_available_time` | `me/findMeetingTimes`, `me/calendar/getSchedule` | Users / Outlook | ✅ |
 | Create event | `outlook_create_event` | Graph POST `me/events` | Outlook | ⚠️ write, not tested |
-| Drafts: new, reply, reply-all, update, delete | `outlook_create_draft`, `outlook_create_reply_draft`, `outlook_create_reply_all_draft`, `outlook_update_draft`, `outlook_delete_draft` | Graph `me/messages`, `createReply`, `createReplyAll`, PATCH, DELETE | Outlook | ✅ new, update, delete tested (reply = same API) |
+| Drafts: new, reply, reply-all, update, delete | `outlook_create_draft`, `outlook_create_reply_draft`, `outlook_create_reply_all_draft`, `outlook_update_draft`, `outlook_delete_draft` | Graph `me/messages`, `createReply`, `createReplyAll`, PATCH, DELETE | Outlook | ✅ new, update, delete, reply-all tested (`scripts/Save-M365Draft.ps1`, also signature, inline images, files over 4 MB through an upload session) |
 | Send | `outlook_send_draft`, `outlook_send_mail` | Graph draft + `send` (needs ContentType header) | Outlook | ✅ tested (email to a colleague) |
 | List chats | `teams_list_chats` | with members + last message | Teams | ✅ |
 | Read chat | `read_resource` | + pasted images downloaded (the connector can't) | Teams | ✅ |
@@ -33,7 +33,7 @@ Summary: every read operation of the connector has a working equivalent except c
 
 | | Microsoft 365 connector | This bridge |
 |---|---|---|
-| Form | MCP tools | PowerShell script called by skills (MCP server = next step) |
+| Form | MCP tools | PowerShell script called by skills (an MCP server is an option, not decided) |
 | Where | claude.ai, Desktop, Code - any device | The machine with az login only |
 | Auth | Anthropic app consented in the home tenant | Tokens stored in 5 Azure connections, refreshed by Microsoft |
 | Durability | Official, permanent | `dynamicInvoke` is portal-internal and not documented for production use |
