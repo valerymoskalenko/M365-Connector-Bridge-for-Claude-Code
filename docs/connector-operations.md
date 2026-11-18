@@ -44,7 +44,7 @@ Tested through `/codeless/httprequest` (7 Nov 2026): draft POST `me/messages`, P
 | Get relevant people | GET `/users/{userId}/relevantpeople` |
 | Get my profile (V2) | GET `/codeless/v1.0/me` - returns 401; use `/codeless/v1.0/users/{upn}` |
 
-`/codeless/httprequest` here has **no object allow-list**: any Graph path starting with `me` or `users` works within the token scopes (files, drive search, sharedWithMe, recent, joinedTeams, people, `findMeetingTimes`, mail). No Chat scopes - chats go through the Teams connection.
+`/codeless/httprequest` here has **no object allow-list**: any Graph path starting with `me` or `users` works within the token scopes (files, drive search, recent, joinedTeams, people, `findMeetingTimes`, mail). No Chat scopes - chats go through the Teams connection. `Invoke-M365Graph.ps1` sends `drive`, `insights`, `followedSites`, `people`, `manager`, `directReports` paths here. `me/drive/sharedWithMe` still answers but is deprecated by Microsoft (no data after November 2026).
 
 ## sharepointonline (SharePoint)
 
@@ -53,6 +53,7 @@ Tested through `/codeless/httprequest` (7 Nov 2026): draft POST `me/messages`, P
 | Operation | Path |
 |---|---|
 | Send an HTTP request to SharePoint (REST) | POST `/datasets/{dataset}/httprequest` - e.g. `/_api/search/query?querytext='...'` |
+| OneDrive API inside SharePoint REST (tested 18 Nov) | same operation with `uri` = `_api/v2.0/shares/u!<base64url of any file / folder URL or sharing link>/driveItem`, `_api/v2.0/drives`, `_api/v2.0/drives/{id}/items/{id}/children`. With the tenant root as `{dataset}` it reaches every site and OneDrive the account can open. File content: `$select=@content.downloadUrl`, then download that URL locally (`.../content` gives a redirect the connector drops) |
 | List folder | GET `/datasets/{dataset}/foldersV2/{id}` |
 | Get file metadata / content (by id or path) | GET `/datasets/{dataset}/files/{id}`, `/files/{id}/content`, `/GetFileByPath`, `/GetFileContentByPath` |
 | Copy file / folder | POST `/datasets/{dataset}/copyFileAsync`, `/copyFolderAsync` |

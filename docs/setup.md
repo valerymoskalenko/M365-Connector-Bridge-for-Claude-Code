@@ -32,6 +32,8 @@ az login                                   # home tenant account
 az group create -n <rg> -l <region>        # or use an existing resource group
 pwsh -File scripts/New-M365Connection.ps1 -Api office365
 pwsh -File scripts/New-M365Connection.ps1 -Api teams
+pwsh -File scripts/New-M365Connection.ps1 -Api sharepointonline   # optional: SharePoint / OneDrive files
+pwsh -File scripts/New-M365Connection.ps1 -Api office365users     # optional: own OneDrive, people
 ```
 
 Each call creates one connection named `m365bridge-<api>` and prints its authorize link and id. Put the ids into `connections.json`.
@@ -40,11 +42,13 @@ Each call creates one connection named `m365bridge-<api>` and prints its authori
 |---|---|---|
 | `mail` | Office 365 Outlook (`office365`) | mail, attachments, calendar - **needed** |
 | `teams` | Microsoft Teams (`teams`) | chats, messages, pasted images - **needed** |
-| `users` | Office 365 Users (`office365users`) | people search, profiles, manager; also Graph for OneDrive, shared files, joined teams, free time - optional |
-| `sharepoint` | SharePoint (`sharepointonline`) | site files, SharePoint REST, tenant-wide search - optional |
-| `onedrive` | OneDrive for Business (`onedriveforbusiness`) | own files, convert to PDF - optional |
+| `users` | Office 365 Users (`office365users`) | own OneDrive and recent files (`Invoke-M365Graph.ps1`), people search, profiles, manager, free time - optional |
+| `sharepoint` | SharePoint (`sharepointonline`) | skill m365-files: search, sites, folders, files and sharing links, also other people's OneDrive files shared with the account - **needed for files** |
+| `onedrive` | OneDrive for Business (`onedriveforbusiness`) | own files, convert to PDF - optional, not used by the scripts |
 
-The scripts use `mail` and `teams` today. The optional connections are documented in [connector-operations.md](connector-operations.md).
+Skill m365-files also needs `"sharepointRoot": "https://<tenant>.sharepoint.com"` (the scripts find it once through `users` if it is missing, and tell you the value) and Python 3.11+ with `markitdown` for files as text and `pymupdf` for PDF pages as pictures: `py -m pip install "markitdown[all]" pymupdf` (`python3 -m pip ...` on macOS / Linux). Old `.doc` / `.ppt` files also need Word / PowerPoint on Windows.
+
+More operations of the optional connections: [connector-operations.md](connector-operations.md).
 
 ## 4. Authorize (you, in the browser)
 

@@ -10,7 +10,7 @@ It needs no app registration and no admin consent in that tenant. Instead it use
 %%{init: {"theme": "base", "flowchart": {"wrappingWidth": 280, "nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontFamily": "Segoe UI, -apple-system, Helvetica, Arial, sans-serif", "fontSize": "15px", "primaryTextColor": "#1F2937", "lineColor": "#64748B", "edgeLabelBackground": "#FFFFFF"}}}%%
 flowchart LR
     subgraph PC["💻 1 · Your computer"]
-        CC("<b>Claude Code</b><br/>skills:<br/>m365-mail<br/>m365-teams<br/>m365-bridge")
+        CC("<b>Claude Code</b><br/>skills:<br/>m365-mail<br/>m365-teams<br/>m365-files<br/>m365-bridge")
         S("<b>PowerShell scripts</b><br/>az login · home tenant")
         CC --> S
     end
@@ -54,6 +54,7 @@ Technical details: [docs/how-it-works.md](docs/how-it-works.md).
 - "Draft a reply-all: we agree, start on Monday." (stays a draft until you say "send")
 - "What did Sam write me in Teams? Open the screenshot he pasted."
 - "What is in my calendar next week?"
+- "Find the onboarding checklist on SharePoint and tell me what changed this month." (only files your account can open)
 
 ## Install and set up
 
@@ -68,6 +69,7 @@ Then ask Claude **"set up the M365 bridge"**. Setup takes about 15 minutes, once
 | `m365-bridge` | setup, how it works, errors, safety rules |
 | `m365-mail` | inbox, search, threads, Sent Items, attachments, calendar, drafts |
 | `m365-teams` | chats, a chat with a person, pasted images, watching a chat, meeting check |
+| `m365-files` | SharePoint and OneDrive: search, site libraries, folders, a file or sharing link as text, download (read-only) |
 
 ## Safe by default
 
@@ -83,7 +85,7 @@ Use the bridge only with your own account, and check your organization's policie
 |---|---|
 | [docs/setup.md](docs/setup.md) | install, config file, create and authorize the connections, test, move |
 | [docs/how-it-works.md](docs/how-it-works.md) | `dynamicInvoke`, connector operations, request and response format |
-| [docs/scripts.md](docs/scripts.md) | `Invoke-M365Graph.ps1` and the helper scripts (drafts, signature, chat watcher) |
+| [docs/scripts.md](docs/scripts.md) | `Invoke-M365Graph.ps1`, `Invoke-M365SharePoint.ps1` and the helper scripts (drafts, signature, chat watcher, file search and reading) |
 | [docs/security.md](docs/security.md) | which Azure roles give access, how to check, reduce and detect it, emergency stop |
 | [docs/findings.md](docs/findings.md) | what was tested, path rules and limits of each connector |
 | [docs/m365-connector-comparison.md](docs/m365-connector-comparison.md) | the claude.ai Microsoft 365 connector compared with this bridge |

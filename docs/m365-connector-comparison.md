@@ -2,7 +2,7 @@
 
 The tool list of the claude.ai Microsoft 365 connector was collected from skills that use it (tools that were really used). It may be incomplete - check the live tool list when the connector is authorized in a session.
 
-Updated 17 Nov 2026. All five connections are authorized and tested (`docs/findings.md`).
+Updated 18 Nov 2026. All five connections are authorized and tested (`docs/findings.md`).
 
 | Operation | Microsoft 365 connector | This bridge | Connection | Status |
 |---|---|---|---|---|
@@ -20,10 +20,13 @@ Updated 17 Nov 2026. All five connections are authorized and tested (`docs/findi
 | Post in Teams | `teams_send_chat_message` | connector "Post message", Graph `me/chats/{id}/messages`; create chat with `/beta/chats` | Teams | ✅ tested (new 1:1 chat with a colleague; 405 for ~4 min after creating a chat - retry) |
 | People search | `search_people` | Search for users V2, Graph `users?$filter`, `me/people?$search` | Users | ✅ |
 | Profile, manager | (part of `search_people`) | `users/{upn}`, `/manager`, relevant people | Users | ✅ |
-| SharePoint / OneDrive search | `sharepoint_search` | SharePoint REST `_api/search/query` (whole tenant incl. OneDrive) | SharePoint | ✅ |
-| Read files | `read_resource` | SharePoint file by path, OneDrive file by id, Graph `me/drive/items/{id}/content` | SharePoint / OneDrive / Users | ✅ binary; text = convert locally |
-| Convert file to PDF | - | OneDrive `convert?type=PDF` | OneDrive | ✅ extra |
-| Shared with me, recent files, joined teams | - | Graph `me/drive/sharedWithMe`, `me/drive/recent`, `me/joinedTeams` | Users | ✅ extra |
+| SharePoint / OneDrive search | `sharepoint_search` | SharePoint REST `_api/search/query`, KQL, only what the account can open (`scripts/Search-M365Files.ps1`, skill m365-files) | SharePoint | ✅ |
+| Folder search | `sharepoint_folder_search` | `Search-M365Files.ps1 -Folders`; folder / library list by URL (`Get-M365File.ps1`) | SharePoint | ✅ |
+| Read files | `read_resource` | any file URL or sharing link → SharePoint `_api/v2.0/shares` → download URL → text with markitdown (`Get-M365File.ps1 -Text`): Word, Excel, PowerPoint, PDF, HTML, text | SharePoint | ✅ |
+| Convert file to PDF | - | OneDrive `convert?type=PDF` (own files only) | OneDrive | ✅ extra |
+| Recent files, joined teams | - | Graph `me/drive/recent`, `me/insights/used`, `me/joinedTeams` | Users | ✅ extra |
+| Shared with me | - | Graph `me/drive/sharedWithMe` answers, but Microsoft deprecated it (no data after November 2026): use search | Users | ⚠️ |
+| Upload, update, create folder, move, rename | `sharepoint_upload_file`, `sharepoint_update_file`, `sharepoint_create_folder`, `sharepoint_move_item`, `sharepoint_rename_item` | possible through SharePoint REST, not built (read-only skill) | SharePoint | - |
 | Copy / delete files | `sharepoint_copy_item`, `sharepoint_delete_item` | SharePoint CopyFileAsync / REST DELETE | SharePoint | ⚠️ write, not tested |
 | Meeting transcripts | 403 also from the home tenant for meetings hosted in the target tenant | 403 `GraphAccessToTranscriptsDisabled` (tenant setting) | Teams | ❌ blocked by the target tenant |
 
@@ -37,5 +40,6 @@ Summary: every read operation of the connector has a working equivalent except c
 | Where | claude.ai, Desktop, Code - any device | The machine with az login only |
 | Auth | Anthropic app consented in the home tenant | Tokens stored in 5 Azure connections, refreshed by Microsoft |
 | Durability | Official, permanent | `dynamicInvoke` is portal-internal and not documented for production use |
-| Search quality | Microsoft Search index (with lag) | Exact Graph queries for mail/chats; SharePoint search index for files |
+| Search quality | Microsoft Search index (with lag) | Exact Graph queries for mail/chats; SharePoint search index for files (with lag) |
+| Files as text | done by the connector | local: Python `markitdown` |
 | Speed | - | ~0.5–2.5 s per call |

@@ -1,6 +1,6 @@
 ---
 name: m365-bridge
-description: Base skill of M365 Connector Bridge - reach a Microsoft 365 account (mail, calendar, Teams chats) from local Claude Code when the claude.ai Microsoft 365 connector is not available in that tenant, through Azure API connections and ARM dynamicInvoke (script Invoke-M365Graph.ps1). Setup (create and authorize the connections, connections.json), how it works, connector path rules, errors, re-authorize, safety rules. Use when the user wants to set up the bridge, when Invoke-M365Graph.ps1 fails, "re-authorize the connection", "move the connections", or before the first use of m365-mail / m365-teams in a session. For mail and calendar recipes see m365-mail, for Teams see m365-teams.
+description: Base skill of M365 Connector Bridge - reach a Microsoft 365 account (mail, calendar, Teams chats, SharePoint / OneDrive files) from local Claude Code when the claude.ai Microsoft 365 connector is not available in that tenant, through Azure API connections and ARM dynamicInvoke (script Invoke-M365Graph.ps1). Setup (create and authorize the connections, connections.json), how it works, connector path rules, errors, re-authorize, safety rules. Use when the user wants to set up the bridge, when Invoke-M365Graph.ps1 fails, "re-authorize the connection", "move the connections", or before the first use of m365-mail / m365-teams / m365-files in a session. For mail and calendar recipes see m365-mail, for Teams see m365-teams, for SharePoint / OneDrive files see m365-files.
 ---
 
 # M365 Connector Bridge - setup and rules
@@ -26,7 +26,9 @@ Paths are relative to the plugin root, `${CLAUDE_PLUGIN_ROOT}` (a repo clone wor
 
 | File | Purpose |
 |---|---|
-| `scripts/Invoke-M365Graph.ps1` | Graph through the Outlook (`mail`) or Teams (`teams`) connection |
+| `scripts/Invoke-M365Graph.ps1` | Graph through the Outlook (`mail`), Teams (`teams`) or Office 365 Users (`users`: own OneDrive, people) connection |
+| `scripts/Invoke-M365SharePoint.ps1` | SharePoint REST, GET only, through the SharePoint (`sharepoint`) connection: search, `_api/v2.0` OneDrive API for every site and OneDrive |
+| `scripts/Search-M365Files.ps1`, `scripts/Get-M365File.ps1`, `scripts/Convert-PdfToPng.py` | file search; a file / folder / sharing link by URL, as text, PDF pages as PNG, or downloaded (skill m365-files) |
 | `scripts/New-M365Connection.ps1` | create one connection and print its authorize link |
 | `scripts/Save-M365Draft.ps1` | every mail draft: new, reply / reply-all, update in place, signature, inline images, large attachments (skill m365-mail) |
 | `scripts/Get-M365Signature.ps1` | the user's current Outlook signature, taken from Sent Items |
@@ -46,7 +48,7 @@ Needs: PowerShell 7 (`pwsh`), Azure CLI, an Azure subscription where the user ca
 
 1. `az login` with the home tenant account. Pick or create a resource group: `az group create -n <rg> -l <region>`.
 2. Copy `${CLAUDE_PLUGIN_ROOT}/connections.example.json` to `~/.m365-bridge/connections.json` and fill in `subscriptionId`, `resourceGroup`, `location`, `homeTenantId`, `account` (the target account's address).
-3. Create the connections: `pwsh -File ${CLAUDE_PLUGIN_ROOT}/scripts/New-M365Connection.ps1 -Api office365` and `-Api teams` (optional: `office365users`, `sharepointonline`, `onedriveforbusiness`). Each prints an authorize link and the connection id.
+3. Create the connections: `pwsh -File ${CLAUDE_PLUGIN_ROOT}/scripts/New-M365Connection.ps1 -Api office365` and `-Api teams` (for files also `sharepointonline`; optional `office365users`, `onedriveforbusiness`). Each prints an authorize link and the connection id. For files also add `"sharepointRoot": "https://<tenant>.sharepoint.com"` and install `markitdown` (`py -m pip install "markitdown[all]"`).
 4. **The user** opens each link: **Edit API connection** → **Authorize** → "Use another account" → the target account → MFA → **Save**. Claude can't do this step.
 5. Put the ids into `connections.json` (`mail`, `teams`, ...).
 6. Test (read-only): `pwsh -File ${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-M365Graph.ps1 'v1.0/me/mailFolders/inbox/messages?$top=1&$select=subject'` and `'v1.0/me/chats?$top=1'`.
@@ -62,7 +64,7 @@ Check a connection: `az resource show --ids <connection id> --query "{status:pro
 | Parameter | Meaning |
 |---|---|
 | `-Path` (1st) | Graph path `v1.0/me/...` or a full URL (nextLink, hostedContents) |
-| `-Connection` | `auto` (default: chats/teams → teams, else mail), `mail`, `teams` |
+| `-Connection` | `auto` (default: chats/teams → teams; drive, insights, followedSites, people, manager, directReports → users; else mail), `mail`, `teams`, `users` |
 | `-All` / `-MaxPages` | follow `@odata.nextLink`, return all items (default 10 pages) |
 | `-OutFile` | save binary content (Teams pasted image, mail attachment) |
 | `-Html` | keep HTML. Default: mail bodies come as **text**; Teams HTML → text, pasted images as `[image: <url>]` |
@@ -91,7 +93,8 @@ With `-All` the result is the list of items itself (no `.value`). With `-Raw`, G
 - Only segment paths: `mailFolders('inbox')` is refused → the script rewrites it to `mailFolders/inbox` (also in nextLinks).
 - Outlook connection: first segment `me` or `users`; objects `messages, mailFolders, events, calendar, calendars, outlook, inferenceClassification`. **`me/calendarView` is refused** → use `me/calendar/calendarView`. `me/sendMail` and `me/findMeetingTimes` are refused.
 - Teams connection: first segment `teams`, `me` or `users`. **`chats/{id}/...` is refused** → the script rewrites it to `me/chats/{id}/...`. Bare `me`, `users?$filter=...` and `me/joinedTeams` are refused.
-- People search, OneDrive and SharePoint are not reachable through these two connections. Use the Office 365 Users / SharePoint / OneDrive connections (`docs/connector-operations.md`; the script doesn't call them yet).
+- Users connection: first segment `me` or `users`, no object check (`me/drive/...`, `me/people`, `users/{upn}/manager`); no chat scopes. `drives/...`, `sites/...`, `shares/...` are refused.
+- SharePoint and OneDrive files of sites and other people: `Invoke-M365SharePoint.ps1` / skill m365-files (SharePoint REST, `_api/v2.0/shares`). File links in a mail or chat (`shares/u!...`) are refused by the Outlook and Users connections.
 
 ## Errors
 
@@ -103,6 +106,8 @@ With `-All` the result is the list of items itself (no `.value`). With `-Raw`, G
 | `HTTP 400 ... URI path is not a valid Graph endpoint` | a path the connector does not allow - see the rules above |
 | `A socket operation was attempted to an unreachable network` (or another network error) | local network failure. The script retries reads 3 times; a write is not retried - check whether it was done, then run it again |
 | `GatewayTimeout ... 'Microsoft.Web'` or another HTTP 5xx | the connector or Graph failed. The script retries reads 3 times; a write is never retried, because it may already be done. For a write, first check whether it was done (read the draft / the newest chat messages), only then run it again. HTTP 429 is retried for reads and writes |
+| SharePoint `HTTP 400 ... Unexpected response from the service` | the SharePoint connector hides SharePoint's own error: no such file / folder, no access, or a bare site URL (no item). Check the URL; for a site use `Get-M365File.ps1 -Libraries` |
+| SharePoint `answered with a redirect` | file content (`.../content`) can't go through the connector: use the item's download URL (`Get-M365File.ps1` does it) |
 | `RequestContentTooLarge` | the request is over 4 MB (a file attachment over about 2.9 MB in base64). Use an upload session (`Save-M365Draft.ps1` does it) |
 | `HTTP 401` / `InvalidAuthenticationToken` / connection status `Error` | the stored token expired or Conditional Access wants a new sign-in → the user authorizes the connection again (setup step 4) |
 | `ResourceNotFound` on the connection | the connection or its resource group was deleted → setup step 3 |

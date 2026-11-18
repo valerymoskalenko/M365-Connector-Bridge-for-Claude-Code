@@ -4,6 +4,7 @@
   "subscriptionId": "<subscription id>",
   "resourceGroup": "<resource group>",
   "location": "westeurope",
+  "sharepointRoot": "https://contoso.sharepoint.com",
   "mail": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-office365",
   "teams": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-teams",
   "users": "/subscriptions/<subscription id>/resourceGroups/<resource group>/providers/Microsoft.Web/connections/m365bridge-office365users",

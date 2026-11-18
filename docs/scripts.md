@@ -4,7 +4,7 @@ The skills call these scripts from the plugin folder. They need PowerShell 7 (`p
 
 ## Invoke-M365Graph.ps1 - the main script
 
-Microsoft Graph through the Outlook (`mail`) or Teams (`teams`) connection.
+Microsoft Graph through the Outlook (`mail`), Teams (`teams`) or Office 365 Users (`users`) connection.
 
 ```powershell
 .\scripts\Invoke-M365Graph.ps1 'v1.0/me/mailFolders/inbox/messages?$top=10&$select=subject,from,receivedDateTime'
@@ -15,7 +15,7 @@ Microsoft Graph through the Outlook (`mail`) or Teams (`teams`) connection.
 | Parameter | Meaning |
 |---|---|
 | `-Path` (first) | Graph path `v1.0/me/...` or a full URL (nextLink, hostedContents) |
-| `-Connection` | `auto` (default: chats/teams → teams, else mail), `mail`, `teams` |
+| `-Connection` | `auto` (default: chats/teams → teams; drive, insights, followedSites, people, manager, directReports → users; else mail), `mail`, `teams`, `users` |
 | `-All` / `-MaxPages` | follow `@odata.nextLink` and return the list of items (default 10 pages) |
 | `-OutFile` | save binary content (pasted image, attachment) |
 | `-Html` | keep HTML. Default: mail bodies come as text; Teams HTML becomes text with `[image: <url>]` for pasted images |
@@ -23,6 +23,35 @@ Microsoft Graph through the Outlook (`mail`) or Teams (`teams`) connection.
 | `-Method`, `-Body`, `-AllowWrite` | writes. **Read-only unless `-AllowWrite`**, which the skills pass only after the account owner approved that exact action |
 
 Retries, up to 3 times: HTTP 429 for every method; HTTP 5xx and network failures only for reads. A write that fails with 5xx or a network error may already be done, so it is never repeated automatically: check, then run it again.
+
+## Invoke-M365SharePoint.ps1 - SharePoint and OneDrive files
+
+SharePoint REST through the SharePoint (`sharepoint`) connection. **GET only.** Covers SharePoint search, the OneDrive API under `_api/v2.0/` (every site and every OneDrive the account can open) and classic `_api/web/...`.
+
+```powershell
+.\scripts\Invoke-M365SharePoint.ps1 "_api/search/query?querytext='budget filetype:xlsx'&rowlimit=10"
+.\scripts\Invoke-M365SharePoint.ps1 '_api/v2.0/drives?$select=id,name' -Site https://contoso.sharepoint.com/sites/Marketing
+```
+
+| Parameter | Meaning |
+|---|---|
+| `-Uri` (first) | `_api/...`, or a full `https://<site>/_api/...` URL (nextLink) |
+| `-Site` | the site the request goes to. Default: `sharepointRoot` from `connections.json` (found once through `users` if missing) |
+| `-All` / `-MaxPages` | follow `@odata.nextLink` |
+| `-Raw` | PowerShell objects instead of JSON |
+
+The two scripts below call it. Retries: 429, 5xx and network failures, up to 3 times (all calls are reads).
+
+| Script | Purpose |
+|---|---|
+| `Search-M365Files.ps1` | search files or folders (KQL) in all sites and OneDrives the account can open; filters `-Site`, `-FileType`, `-ModifiedAfter`, `-Folders`; sort by relevance, date or size; paging |
+| `Get-M365File.ps1` | by URL (file, folder, library, sharing link, Office web link): details, folder list, `-Libraries` of a site, download (`-OutFile` / `-OutDir`), `-Text` (markitdown: Word, Excel, PowerPoint, PDF, .msg, .rtf, HTML; old .doc / .ppt through local Word / PowerPoint), `-Pages` (PDF pages as PNG). Downloads through the item's short-lived download URL, which it never prints |
+| `Convert-PdfToPng.py` | renders PDF pages to PNG with PyMuPDF (used by `Get-M365File.ps1 -Pages`), for PDFs made of pictures |
+
+```powershell
+.\scripts\Search-M365Files.ps1 'onboarding' -FileType docx,pdf -SortBy Modified
+.\scripts\Get-M365File.ps1 'https://contoso.sharepoint.com/sites/HR/Shared Documents/Onboarding.docx' -Text
+```
 
 ## Helper scripts
 

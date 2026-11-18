@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Microsoft Graph as the target account, through the Azure API connections "mail" (Office 365 Outlook:
-  mail, calendar) and "teams" (Microsoft Teams: chats, teams) from connections.json - for local Claude Code.
+  mail, calendar), "teams" (Microsoft Teams: chats, teams) and, optionally, "users" (Office 365 Users:
+  own OneDrive, recent files, people, profiles) from connections.json - for local Claude Code.
 
 .DESCRIPTION
   For a tenant that gives no app consent for mail/chats:
@@ -17,7 +18,10 @@
 .PARAMETER Path
   Graph path ("v1.0/me/messages?...") or a full https://graph.microsoft.com/... URL (nextLink, hostedContents).
 .PARAMETER Connection
-  auto (default: chats/teams/joinedTeams -> teams, everything else -> mail), mail, teams.
+  auto (default: chats/teams/joinedTeams -> teams; drive/insights/followedSites/people/manager/directReports
+  -> users; everything else -> mail), mail, teams, users.
+  The users connection has no Graph object allow-list (first segment me or users only) but no chat scopes.
+  Files in sites and other people's OneDrives: use Get-M365File.ps1 / Search-M365Files.ps1.
 .PARAMETER All
   Follow @odata.nextLink (up to -MaxPages) and return all "value" items.
 .PARAMETER OutFile
@@ -38,7 +42,7 @@ param(
     [Parameter(Mandatory, Position = 0)][string]$Path,
     [ValidateSet('GET', 'POST', 'PATCH', 'PUT', 'DELETE')][string]$Method = 'GET',
     [object]$Body,
-    [ValidateSet('auto', 'mail', 'teams')][string]$Connection = 'auto',
+    [ValidateSet('auto', 'mail', 'teams', 'users')][string]$Connection = 'auto',
     [switch]$All,
     [int]$MaxPages = 10,
     [string]$OutFile,
@@ -55,9 +59,9 @@ $cfgFile = @($env:M365_BRIDGE_CONFIG, (Join-Path $HOME '.m365-bridge/connections
 if (-not $cfgFile) { throw "No connections.json. Copy connections.example.json to $(Join-Path $HOME '.m365-bridge/connections.json') (or set M365_BRIDGE_CONFIG) and fill in the connection ids." }
 $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json
 $sub = $cfg.subscriptionId
-$conn = @{ mail = $cfg.mail; teams = $cfg.teams }
+$conn = @{ mail = $cfg.mail; teams = $cfg.teams; users = $cfg.users }
 if (-not $sub -or -not $conn.mail -or -not $conn.teams) { throw "$cfgFile needs subscriptionId, mail and teams." }
-$opPath = @{ mail = '/codeless/httprequest'; teams = '/httprequest' }
+$opPath = @{ mail = '/codeless/httprequest'; teams = '/httprequest'; users = '/codeless/httprequest' }
 
 if ($Method -ne 'GET' -and -not $AllowWrite) {
     throw "Refused: $Method changes the target account's mailbox/Teams. Run it only after the account owner approved this exact action, with -AllowWrite."
@@ -74,9 +78,14 @@ function ConvertTo-ConnectorUrl([string]$p) {
     return $head + $tail
 }
 function Get-ConnectionFor([string]$p) {
-    if ($Connection -ne 'auto') { return $Connection }
-    if ($p -match '/(chats|teams|joinedTeams|onlineMeetings)(/|\?|$)') { return 'teams' }
-    return 'mail'
+    $c = $Connection
+    if ($c -eq 'auto') {
+        $c = if ($p -match '/(chats|teams|joinedTeams|onlineMeetings)(/|\?|$)') { 'teams' }
+        elseif ($p -match '/(drive|insights|followedSites|people|manager|directReports)(/|\?|$)') { 'users' }
+        else { 'mail' }
+    }
+    if (-not $conn[$c]) { throw "$cfgFile has no `"$c`" connection id (needed for $p). Create it with New-M365Connection.ps1 -Api office365users." }
+    return $c
 }
 
 # ---------------------------------------------------------------- ARM token (az login, home tenant) - kept in memory only

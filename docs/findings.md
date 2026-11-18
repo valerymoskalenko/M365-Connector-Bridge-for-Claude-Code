@@ -82,6 +82,44 @@ Scopes in the Office 365 Users connection token (from a 403 message): `Applicati
 | Teams connector `POST /beta/chats` for a person of another organization | ❌ the **federated chat** (with the person's real account in their own tenant) can't be created: the address and the object id from their tenant both give 400 `'user@odata.bind' field is missing in the request`. Graph itself can create it ([Create chat](https://learn.microsoft.com/graph/api/chat-post), example 7), but the connector refuses a raw `POST /chats` (row above). With the object id of the person's **guest object in the target tenant** the operation gives 201 - but that is a different chat, see the next row |
 | 1:1 chats between the target account and one person of another organization, when each account is also a guest in the other tenant (17 Nov, the owner's two accounts): **three different chats** | (1) **Federated chat**, both real accounts: the members have different tenant ids, the id is `19:<target id>_<other id>@unq.gbl.spaces` and is the same in both tenants. 404 until the person sent the first message in Teams; then listed at once, readable, and `Send-M365ChatMessage.ps1` posted there (6 seconds; the message was read back from the other tenant, a second run stopped). (2) **Chat with the person's guest object in the target tenant**: member address = the external address, member tenant = the target tenant. The bridge can create it and post there, but the person sees it only after switching Teams to the target organization: a test post there went unseen. (3) **Chat with the target account's guest object in the other tenant**: lives in the other tenant, the bridge gets 403 |
 
+### Fourth round: SharePoint and OneDrive files, read-only (18 Nov 2026)
+
+Tested on one communication site of the target tenant (about 50 documents, one library of ~2,700 items), one large team site, the account's own OneDrive, and tenant-wide search. Times are one call each, including ARM.
+
+| Test | Result |
+|---|---|
+| SharePoint `_api/search/query` with `path:"<site URL>" IsDocument:true`, `sortlist`, `selectproperties`, `rowlimit`, `startrow` | ✅ ~1.7–2.3 s. `TotalRows` is approximate (the same query gave 45–51) |
+| KQL `filetype:`, `author:"Name"`, `filename:`, `LastModifiedTime>=`, `Size>`, `"phrase"`, words inside PDF / Word text | ✅ |
+| `IsContainer:true` alone | returns the site itself as well; `IsContainer:true (contentclass:STS_ListItem_DocumentLibrary OR contentclass:STS_ListItem_MySiteDocumentLibrary)` returns folders only |
+| `IsDocument:true` | excludes pictures and design files (`png`, `svg`, `ai`): 0 `png` hits with it |
+| Query text with `'` (doubled to `''`) and `&` (URL-encoded) | ✅ |
+| `_api/web/lists?$filter=BaseTemplate eq 101`, `_api/web/GetFolderByServerRelativePath(decodedurl='...')?$expand=Folders,Files` | ✅ ~1 s |
+| **`_api/v2.0/...`** (the OneDrive API inside SharePoint REST): `drives`, `drives/{id}/items/{id}/children` (paging by `@odata.nextLink`), `shares/u!<base64url>/driveItem` | ✅ ~0.6–1 s. The connector passes every v2.0 path |
+| `_api/v2.0/shares/...` with a plain file URL (spaces or `%20`), a folder URL, a library URL, an `/:w:/r/...` link | ✅ |
+| Same, with a **bare site URL** | ❌ 400 - a site has no driveItem; list its libraries with `_api/v2.0/drives` on that site |
+| One dataset for all: the tenant root `https://<tenant>.sharepoint.com` resolves files of other sites and of OneDrive (`<tenant>-my.sharepoint.com`) through `v2.0/shares` | ✅ |
+| `_api/v2.0/me/drive` on the root site | ❌ 400; use the item URL with `shares`, or Graph `me/drive` through the Users connection |
+| Office web link `.../_layouts/15/Doc.aspx?sourcedoc={guid}&file=...`: `_api/web/GetFileById('<guid>')` on that site → `ServerRelativeUrl` → `shares` | ✅ |
+| SharePoint connector `GET /datasets/{site}/GetFileContentByPath?path=/<library>/<file>` | ✅ 5,429,840 bytes in 2.1 s (base64 in the ARM response). Larger files not tested |
+| `_api/v2.0/.../driveItem/content` and `content?format=pdf` | ❌ the connector returns `statusCode: Redirect` (302) and drops the `Location` header, so the file can't be followed |
+| `driveItem?$select=...,@content.downloadUrl`, then a plain local GET of that URL (no auth header) | ✅ 1,551,668 bytes in 1.1 s, straight from SharePoint (no connector size limit). The URL is pre-authenticated and short-lived: never print or share it. `&format=pdf` on it is ignored |
+| Not found, and (expected) no access | ❌ both arrive as 400 `"Unexpected response from the service"` - the connector hides SharePoint's own error |
+| Local text: `markitdown` on .docx (1.5 MB → 6,155 chars, 3 s), .pdf (13,190 chars), .xlsx (one table per sheet), .md | ✅. A PDF made of pictures (5.4 MB styleguide) gives only 1,771 characters: read the PDF itself |
+| Users `/codeless/httprequest` → Graph `me/drive`, `me/drive/root/children`, `me/drive/root/search(q='...')`, `me/drive/recent`, `me/insights/used`, `me/followedSites`, `users/{upn}/drive` | ✅ ~0.7–2 s |
+| Users → Graph `me/drive/sharedWithMe` | ✅ 61 items, 6 s - but [deprecated by Microsoft](https://learn.microsoft.com/graph/api/drive-sharedwithme): stops returning data after November 2026. Don't build on it |
+| Users → Graph `shares/u!...` | ❌ 400 (first segment must be `me` or `users`); use SharePoint `_api/v2.0/shares` |
+| Users → Graph `me/drive/items/{id}/content?format=pdf` | ❌ redirect, not followed (same as above). For own files the OneDrive connector's `convert?type=PDF` works (second round) |
+| **Large team site** (~10,000 documents, ~15,600 items, files up to several GB): search sorted by `Size` | ✅ ~2 s |
+| KQL `Size>X Size<Y` (same property twice, no operator) | ❌ joined with OR: the range filters nothing. `Size>=X AND Size<=Y` ✅ |
+| `Size` in search results vs `driveItem.size` | can differ a lot: 2.8 GB in search, 6.9 GB in the item. Take the size from the item |
+| Download through `@content.downloadUrl`: 134 MB pptx | ✅ 21 s (about 6 MB/s on this laptop) |
+| `markitdown`: 26 MB pptx (8 s, mostly pictures: 2.7 KB of text), 27 MB xlsx (15 s, 0.5 MB of text), .xls, .msg, .rtf, .csv, .txt | ✅ |
+| `markitdown`: .doc, .ppt | ❌ `UnsupportedFormatException`. Local Word / PowerPoint (COM, read-only, macros forced off) save them as .docx / .pptx first, then markitdown works: .doc 18 s, .ppt 26–41 s (Office start). PowerPoint stays in memory until the COM objects are released |
+| `markitdown`: .vsdx | ❌ handled as pptx, `FileConversionException` |
+| PDF made of pictures: Claude Code's Read tool on the PDF | ❌ on a laptop without poppler: "pdftoppm is not installed". PyMuPDF renders pages to PNG (`scripts/Convert-PdfToPng.py`, 110 dpi, ~190 KB per page), then Read reads the PNG ✅ |
+| `py -I` vs `py -E -P` | `-I` hides packages installed with `pip install --user` (PyMuPDF was not found); `-E -P` (Python 3.11+) sees them and still loads nothing from the current folder or the script's folder |
+| Folder paging: `children?$top=3` followed by `@odata.nextLink` | ✅ 16 of 16 items (no folder over 200 items found to test the default page size) |
+
 ## Connector path rules
 
 The connectors validate the Graph URL before calling Graph. Error text: `URI path is not a valid Graph endpoint, path is neither absolute nor relative or resource/object is not supported for this connector. Invalid resource,Allowed values: ... Invalid Object,Allowed values: ...`
@@ -90,8 +128,8 @@ The connectors validate the Graph URL before calling Graph. Error text: `URI pat
 |---|---|---|---|
 | Office 365 Outlook | `me`, `users` | `messages, mailFolders, events, calendar, calendars, outlook, inferenceClassification` | `me/calendarView` (use `me/calendar/calendarView`), `me` alone |
 | Microsoft Teams | `teams`, `me`, `users` | `channels, chats, installedApps, messages, pinnedMessages, o…` (truncated) | `chats/{id}/...` (use `me/chats/{id}/...`), `me` alone, `users?$filter=`, `me/joinedTeams` |
-| Office 365 Users | `me`, `users` | no object check | `sites/...`, `search/query` (first segment) |
-| SharePoint (REST, not Graph) | any `_api/...` on the site in `{dataset}` | - | site URL encoded once → 404 |
+| Office 365 Users | `me`, `users` | no object check | `sites/...`, `drives/...`, `shares/...`, `search/query` (first segment) |
+| SharePoint (REST, not Graph) | any `_api/...` on the site in `{dataset}`, also `_api/v2.0/...` | - | site URL encoded once → 404; anything that answers with a redirect (file `content`) |
 
 Also:
 - Only **segment** paths: Graph nextLinks like `mailFolders('inbox')` are refused → rewrite `/(\w+)\('([^']*)'\)` to `/$1/$2`.

@@ -6,7 +6,7 @@ The picture is from the [README](../README.md#how-it-works). This page has the t
 %%{init: {"theme": "base", "flowchart": {"wrappingWidth": 280, "nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontFamily": "Segoe UI, -apple-system, Helvetica, Arial, sans-serif", "fontSize": "15px", "primaryTextColor": "#1F2937", "lineColor": "#64748B", "edgeLabelBackground": "#FFFFFF"}}}%%
 flowchart LR
     subgraph PC["💻 1 · Your computer"]
-        CC("<b>Claude Code</b><br/>skills:<br/>m365-mail<br/>m365-teams<br/>m365-bridge")
+        CC("<b>Claude Code</b><br/>skills:<br/>m365-mail<br/>m365-teams<br/>m365-files<br/>m365-bridge")
         S("<b>PowerShell scripts</b><br/>az login · home tenant")
         CC --> S
     end
@@ -62,5 +62,6 @@ local az login (home tenant account)
   | SharePoint | `/datasets/{site URL, encoded twice}/httprequest` | SharePoint REST |
 
   Each connector allows only some Graph paths: [findings.md](findings.md).
+- SharePoint REST also serves the OneDrive API under `_api/v2.0/` (`shares`, `drives`, `items`), so one connection reaches every site and every OneDrive the account can open. File content is not sent through the connector: the script reads the item's short-lived `@content.downloadUrl` and downloads the file straight from SharePoint (no connector size limit).
 - Response: `{ "response": { "statusCode": "OK", "headers": {...}, "body": ... } }`. Binary content comes as `{ "$content-type": "...", "$content": "<base64>" }`.
 - Each call takes about 0.5-2 seconds. Connector throttling applies (Outlook about 300 calls per 60 seconds per connection).
